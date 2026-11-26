@@ -1,56 +1,74 @@
 (() => {
   "use strict";
 
-  const dialog = document.createElement("dialog");
-  dialog.id = "lottery";
-  dialog.setAttribute("aria-labelledby", "lottery-title");
-  dialog.innerHTML = `
-    <div class="lottery-heading">
-      <h2 id="lottery-title">Namen auslosen</h2>
-      <button type="button" id="lottery-close">Schließen</button>
-    </div>
-    <p class="klein">Die Namensliste bleibt in diesem Browser-Tab und wird beim Neuladen gelöscht.</p>
-    <fieldset id="lottery-controls" class="lottery-controls">
-      <legend class="lottery-sr">Namensliste und Auslosung</legend>
-      <div id="lottery-drop" class="lottery-drop">
-        <p><strong>Namensdatei hierher ziehen</strong></p>
-        <p class="klein">Excel (.xlsx), CSV oder TXT</p>
-        <button type="button" id="lottery-pick">Datei auswählen</button>
-        <input type="file" id="lottery-file" accept=".xlsx,.csv,.txt" hidden>
+  const page = document.createElement("section");
+  page.id = "lottery";
+  page.className = "lottery-page";
+  page.hidden = true;
+  page.setAttribute("aria-labelledby", "lottery-title");
+  page.innerHTML = `
+    <div class="panel lottery-stage">
+      <div class="lottery-title-row">
+        <h1 id="lottery-title" tabindex="-1">Namen auslosen</h1>
+        <button type="button" id="lottery-close">Zurück zur Abfrage</button>
       </div>
-      <label for="lottery-input">Namen eingeben</label>
-      <textarea id="lottery-input" rows="3" placeholder="Ein Name pro Zeile"></textarea>
-      <button type="button" id="lottery-add">Namen hinzufügen</button>
-      <h3 id="lottery-roster-title">Namensliste</h3>
-      <ul class="lottery-roster" id="lottery-roster" aria-labelledby="lottery-roster-title"></ul>
-      <div class="lottery-draw">
-        <label for="lottery-count">Anzahl</label>
-        <select id="lottery-count"></select>
-        <button class="primary" type="button" id="lottery-run">Auslosen</button>
+      <div id="lottery-editor">
+        <p class="klein">Die Namensliste bleibt in diesem Browser-Tab und wird beim Neuladen gelöscht.</p>
+        <fieldset id="lottery-controls" class="lottery-editor" aria-label="Namensliste bearbeiten">
+          <div id="lottery-drop" class="lottery-drop">
+            <p><strong>Namensdatei hierher ziehen</strong></p>
+            <p class="klein">Excel (.xlsx), CSV oder TXT</p>
+            <button type="button" id="lottery-pick">Datei auswählen</button>
+            <input type="file" id="lottery-file" accept=".xlsx,.csv,.txt" hidden>
+          </div>
+          <label for="lottery-input">Namen eingeben</label>
+          <textarea id="lottery-input" rows="3" placeholder="Ein Name pro Zeile"></textarea>
+          <button type="button" id="lottery-add">Namen hinzufügen</button>
+          <h2 id="lottery-roster-title">Namensliste</h2>
+          <ul class="lottery-roster" id="lottery-roster" aria-labelledby="lottery-roster-title"></ul>
+          <div class="lottery-actions"><button class="primary" type="button" id="lottery-lock">Liste einloggen</button></div>
+        </fieldset>
       </div>
-    </fieldset>
-    <p class="klein lottery-status" id="lottery-status" role="status" aria-atomic="true"></p>
-    <div id="lottery-animation" class="lottery-animation" hidden aria-hidden="true"><span>?</span><span>?</span><span>?</span></div>
-    <section id="lottery-result" aria-labelledby="lottery-result-title" hidden>
-      <h3 id="lottery-result-title">Gezogene Namen</h3>
-      <p class="klein">Tippe auf eine Karte, um diesen Platz neu auszulosen.</p>
-      <ol class="lottery-drawn" id="lottery-drawn"></ol>
-    </section>`;
-  document.body.append(dialog);
+      <div id="lottery-stage" hidden>
+        <div class="lottery-draw">
+          <label for="lottery-count">Anzahl</label>
+          <select id="lottery-count"></select>
+          <button class="primary" type="button" id="lottery-run">Namen auslosen</button>
+          <button type="button" id="lottery-edit">Liste bearbeiten</button>
+        </div>
+        <p class="klein lottery-status" id="lottery-draw-status" role="status"></p>
+        <section id="lottery-result" aria-labelledby="lottery-result-title" hidden>
+          <h2 id="lottery-result-title">Gezogene Namen</h2>
+          <p class="klein">Tippe auf eine Karte, um diesen Platz neu auszulosen.</p>
+          <ol class="lottery-drawn" id="lottery-drawn"></ol>
+        </section>
+        <ul class="lottery-deck" id="lottery-deck" aria-label="Karten für die Ziehung"></ul>
+      </div>
+      <p class="klein lottery-status" id="lottery-status" role="status" aria-atomic="true"></p>
+    </div>`;
+  document.body.append(page);
 
   const byId = (id) => document.getElementById(id);
   const controls = byId("lottery-controls");
   const count = byId("lottery-count");
   const drawButton = byId("lottery-run");
+  const lockButton = byId("lottery-lock");
   const status = byId("lottery-status");
-  const animation = byId("lottery-animation");
+  const drawStatus = byId("lottery-draw-status");
+  const resultPanel = byId("lottery-result");
   const drawnList = byId("lottery-drawn");
+  const deck = byId("lottery-deck");
   const fileInput = byId("lottery-file");
+  const manual = byId("lottery-input");
   const roster = [];
   let drawn = [];
   let working = false;
+  let locked = false;
   let drawCount = 3;
   let chosenInput = null;
+
+  const motionReduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches || typeof deck.animate !== "function";
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function button(text, action, label) {
     const b = document.createElement("button");
@@ -65,10 +83,27 @@
     return roster.filter((person) => !person.excluded);
   }
 
+  function card(person, control) {
+    const el = control || document.createElement("span");
+    el.className = "memory-card";
+    const body = document.createElement("span");
+    body.className = "memory-body";
+    const front = document.createElement("span");
+    front.className = "memory-front";
+    front.textContent = person.name;
+    const back = document.createElement("span");
+    back.className = "memory-back";
+    back.setAttribute("aria-hidden", "true");
+    body.append(front, back);
+    el.append(body);
+    return el;
+  }
+
   function showSuggestions() {
     const container = byId("lottery-suggestions");
     if (!container) return;
     const input = byId("vorname");
+    if (chosenInput?.input !== input) chosenInput = null;
     const names = container.querySelector(".lottery-suggestions-list");
     names.replaceChildren(...drawn.map((person) => button(person.name, () => {
       input.value = person.name;
@@ -76,25 +111,23 @@
       input.form.elements.klasse.focus();
     })));
     container.hidden = !drawn.length;
-    if (chosenInput?.input === input && !drawn.includes(chosenInput.person)) {
+    if (chosenInput && !drawn.includes(chosenInput.person)) {
       if (input.value === chosenInput.person.name) input.value = "";
       chosenInput = null;
     }
   }
 
-  function renderDrawn(animate = false) {
+  function resultCard(person, index) {
+    return card(person, button("", () => redraw(index), person.name + " neu auslosen"));
+  }
+
+  function renderDrawn() {
     drawnList.replaceChildren(...drawn.map((person, index) => {
       const li = document.createElement("li");
-      if (animate) {
-        li.className = "lottery-reveal";
-        li.style.animationDelay = Math.min(index, 5) * 85 + "ms";
-      }
-      const card = button(person.name, () => redraw(index), person.name + " neu auslosen");
-      card.disabled = working;
-      li.append(card);
+      li.append(resultCard(person, index));
       return li;
     }));
-    byId("lottery-result").hidden = !drawn.length;
+    resultPanel.hidden = !drawn.length;
     showSuggestions();
   }
 
@@ -103,9 +136,8 @@
     list.replaceChildren(...roster.map((person) => {
       const li = document.createElement("li");
       li.className = "lottery-person" + (person.excluded ? " lottery-excluded" : "");
-      const name = document.createElement("strong");
-      name.textContent = person.name;
       const actions = document.createElement("div");
+      actions.className = "lottery-person-controls";
       const toggleLabel = person.excluded ? "Einbeziehen" : "Ausschließen";
       const toggle = button(toggleLabel, () => {
         person.excluded = !person.excluded;
@@ -117,25 +149,24 @@
         roster.splice(roster.indexOf(person), 1);
         drawn = drawn.filter((p) => p !== person);
         refreshRoster();
-        byId("lottery-input").focus();
+        manual.focus();
         status.textContent = person.name + " wurde entfernt.";
       }, person.name + " entfernen"));
-      li.append(name, actions);
+      li.append(card(person), actions);
       if (restoreFocus === person) li.dataset.restore = "true";
       return li;
     }));
     if (restoreFocus) list.querySelector("[data-restore] button")?.focus();
     const max = available().length;
     byId("lottery-roster-title").textContent = "Namensliste · " + max + " von " + roster.length + " nehmen teil";
-    count.replaceChildren(...Array.from({length: Math.max(1, max)}, (_, i) => {
+    count.replaceChildren(...Array.from({length: max}, (_, i) => {
       const option = document.createElement("option");
-      option.value = max ? String(i + 1) : "0";
+      option.value = String(i + 1);
       option.textContent = option.value;
       return option;
     }));
     count.value = String(Math.min(drawCount, max));
-    count.disabled = !max;
-    drawButton.disabled = !max;
+    lockButton.disabled = !max && !manual.value.trim();
     renderDrawn();
   }
 
@@ -165,35 +196,107 @@
     return shuffled.slice(0, n);
   }
 
-  function reveal(result, focusIndex = 0) {
-    working = true;
-    controls.disabled = true;
-    for (const card of drawnList.querySelectorAll("button")) card.disabled = true;
-    status.textContent = "Die Namenskarten werden gemischt …";
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    animation.hidden = reducedMotion;
-    setTimeout(() => {
-      drawn = result;
-      working = false;
-      controls.disabled = false;
-      animation.hidden = true;
-      renderDrawn(true);
-      status.textContent = drawn.length === 1 ? "1 Name ausgelost." : drawn.length + " Namen ausgelost.";
-      if (dialog.open) drawnList.querySelectorAll("button")[focusIndex]?.focus();
-    }, reducedMotion ? 0 : 3100);
+  function renderDeck() {
+    deck.replaceChildren(...available().map((person) => {
+      const li = document.createElement("li");
+      li.append(card(person));
+      return li;
+    }));
+    deck.classList.remove("has-result");
+    deck.removeAttribute("aria-hidden");
   }
 
-  function redraw(index) {
+  function busy(value) {
+    working = value;
+    for (const el of [count, drawButton, byId("lottery-edit"), ...drawnList.querySelectorAll("button")]) el.disabled = value;
+  }
+
+  async function shuffleDeck() {
+    const cards = [...deck.querySelectorAll(".memory-card")];
+    cards.forEach((el) => el.classList.add("is-facedown"));
+    deck.setAttribute("aria-hidden", "true");
+    if (motionReduced()) return;
+    await pause(450);
+    for (let wave = 0; wave < 4; wave++) {
+      const current = [...deck.children];
+      const start = new Map(current.map((li) => [li,li.getBoundingClientRect()]));
+      deck.append(...randomNames(current, current.length));
+      for (const li of current) {
+        const before = start.get(li);
+        const after = li.getBoundingClientRect();
+        const x = before.left - after.left;
+        const y = before.top - after.top;
+        const tilt = Math.random() * 30 - 15;
+        li.animate([
+          {transform: `translate(${x}px,${y}px)`},
+          {transform: `translate(${x*.45}px,${y*.45-12}px) rotate(${tilt}deg)`, offset: .48},
+          {transform:"none"}
+        ], {duration:660,easing:"ease-in-out"});
+      }
+      await pause(660);
+    }
+  }
+
+  async function draw() {
+    if (!locked || working || !Number(count.value)) return;
+    const result = randomNames(available(), Number(count.value));
+    busy(true);
+    resultPanel.hidden = true;
+    renderDeck();
+    drawStatus.textContent = "Die Karten werden gemischt …";
+    await shuffleDeck();
+    drawnList.replaceChildren();
+    resultPanel.hidden = false;
+    deck.classList.add("has-result");
+    drawStatus.textContent = "Die Karten werden aufgedeckt …";
+    const animated = !motionReduced();
+    if (!page.hidden) resultPanel.scrollIntoView({block:"nearest",behavior:animated?"smooth":"instant"});
+    for (const [index,person] of result.entries()) {
+      const li = document.createElement("li");
+      const el = resultCard(person, index);
+      el.disabled = true;
+      if (animated) el.classList.add("is-facedown");
+      li.append(el);
+      drawnList.append(li);
+      if (animated) {
+        await pause(80);
+        el.classList.remove("is-facedown");
+        await pause(440);
+      }
+    }
+    drawn = result;
+    showSuggestions();
+    busy(false);
+    drawStatus.textContent = drawn.length === 1 ? "1 Name ausgelost." : drawn.length + " Namen ausgelost.";
+    if (!page.hidden) drawnList.querySelector("button")?.focus({preventScroll:true});
+  }
+
+  async function redraw(index) {
     if (working) return;
     const candidates = available().filter((person) => !drawn.includes(person));
     if (!candidates.length) {
-      status.textContent = "Zum Nachlosen brauchst du einen weiteren verfügbaren Namen.";
+      drawStatus.textContent = "Zum Nachlosen brauchst du einen weiteren verfügbaren Namen.";
       return;
     }
     if (!window.confirm("Diesen Namen neu auslosen?")) return;
-    const result = [...drawn];
-    [result[index]] = randomNames(candidates, 1);
-    reveal(result, index);
+    const [person] = randomNames(candidates, 1);
+    const el = drawnList.children[index].querySelector("button");
+    const animated = !motionReduced();
+    busy(true);
+    drawStatus.textContent = "Diese Karte wird neu ausgelost …";
+    if (animated) {
+      el.classList.add("is-facedown");
+      await pause(550);
+    }
+    drawn[index] = person;
+    el.querySelector(".memory-front").textContent = person.name;
+    el.setAttribute("aria-label", person.name + " neu auslosen");
+    el.classList.remove("is-facedown");
+    if (animated) await pause(440);
+    busy(false);
+    showSuggestions();
+    drawStatus.textContent = "Die Karte wurde neu ausgelost.";
+    if (!page.hidden) el.focus({preventScroll:true});
   }
 
   function parseDelimited(text, separator) {
@@ -341,10 +444,37 @@
     }
   }
 
+  const route = "#namensauslosung";
+  function syncRoute() {
+    const onPage = location.hash === route;
+    if (page.hidden === !onPage) return;
+    page.hidden = !onPage;
+    byId("app").hidden = onPage;
+    if (onPage) {
+      window.scrollTo(0, 0);
+      byId("lottery-title").focus({preventScroll:true});
+    } else {
+      showSuggestions();
+      byId("lottery-open")?.focus();
+    }
+  }
+
   document.addEventListener("click", (event) => {
-    if (event.target.closest("#lottery-open")) dialog.showModal();
+    if (event.target.closest("#lottery-open")) {
+      history.pushState({fromAbfrage:true}, "", route);
+      syncRoute();
+    }
   });
-  byId("lottery-close").addEventListener("click", () => dialog.close());
+  window.addEventListener("popstate", syncRoute);
+  window.addEventListener("hashchange", syncRoute);
+  byId("lottery-close").addEventListener("click", () => {
+    if (history.state?.fromAbfrage) history.back();
+    else {
+      history.replaceState(null, "", location.pathname + location.search);
+      syncRoute();
+    }
+  });
+
   byId("lottery-pick").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => readFile(fileInput.files[0]));
   const drop = byId("lottery-drop");
@@ -360,20 +490,44 @@
     drop.classList.remove("lottery-over");
     readFile(event.dataTransfer.files[0]);
   });
-  const manual = byId("lottery-input");
   function addManual() {
-    if (working) return;
+    if (working || !manual.value.trim()) return;
     if (addNames(namesFromRows(manual.value.split(/\r\n?|\n/).map((line) => [line])))) manual.value = "";
     manual.focus();
   }
   byId("lottery-add").addEventListener("click", addManual);
+  manual.addEventListener("input", () => { lockButton.disabled = !available().length && !manual.value.trim(); });
   manual.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); addManual(); }
   });
-  count.addEventListener("change", () => { drawCount = Number(count.value); });
-  drawButton.addEventListener("click", () => {
-    if (!working && Number(count.value)) reveal(randomNames(available(), Number(count.value)));
+
+  function setLocked(value) {
+    locked = value;
+    byId("lottery-editor").hidden = locked;
+    byId("lottery-stage").hidden = !locked;
+    status.hidden = locked;
+    if (locked) {
+      drawStatus.textContent = "";
+      renderDeck();
+      renderDrawn();
+      drawButton.focus();
+    } else {
+      manual.focus();
+    }
+  }
+  lockButton.addEventListener("click", () => {
+    if (working) return;
+    addManual();
+    if (!available().length) {
+      status.textContent = "Füge mindestens einen Namen hinzu.";
+      return;
+    }
+    setLocked(true);
   });
+  byId("lottery-edit").addEventListener("click", () => setLocked(false));
+  count.addEventListener("change", () => { drawCount = Number(count.value); });
+  drawButton.addEventListener("click", draw);
   globalThis.nameLottery = {showSuggestions};
   refreshRoster();
+  syncRoute();
 })();
