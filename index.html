@@ -119,8 +119,10 @@ function leeren(t){
 function feld(label,k,i,val,einheit,seite=""){
  return '<label><span>'+label+'</span><div class="einheit"><input data-field="'+k+'" data-i="'+i+'" data-seite="'+seite+'" inputmode="decimal" autocomplete="off" placeholder="00,00 '+einheit+'" aria-label="'+label+(einheit==="€"?" in Euro":" in Prozent")+'" value="'+esc(val)+'"></div></label>';
 }
-function eigenerGesamtpreis(){
- return '<p class="klein einzel"><strong>Dein Gesamtpreis aus Aufgabe 1</strong> · '+euro(cent(a.gesamtpreis))+'</p>';
+function loesungenAusAufgabe1(mitAnteilen=false){
+ const gesamt='Gesamtpreis Immobilie: '+euro(cent(a.gesamtpreis));
+ const anteile=mitAnteilen?' · Grundstück: '+prozent(anteil(a.p[0]))+' · Lagerhalle: '+prozent(anteil(a.p[1])):'';
+ return '<p class="klein einzel"><strong>Deine Lösungen aus Aufgabe 1</strong> · '+gesamt+anteile+'</p>';
 }
 function zahlkarten(items){
  return '<div class="felder">'+items.map(([l,v])=>'<div class="kasten"><span class="klein">'+l+'</span><strong>'+v+'</strong></div>').join("")+'</div>';
@@ -153,7 +155,7 @@ function tabelle(){
   const aktiv=a.locked?a.afa===i:beweglich&&a.karte===id;
   return '<button class="feld" data-act="'+(a.locked?"afa":"zelle")+'" data-i="'+i+'"'+(beweglich?' draggable="true" data-karte="'+id+'"':'')+' aria-label="'+zellen[i]+', '+text+'" aria-pressed="'+aktiv+'">'+text+'</button>';
  };
- return situation(basis,"Angabe aus Aufgabe 1")+situation(notariat,"Angabe aus Aufgabe 2a")+eigenerGesamtpreis()+frage(a.locked?"Bestimme die Abschreibungsgrundlage.":"Ordne die Beträge in der Tabelle zu.")+(a.locked?'<p class="klein">Tippe den passenden Betrag in der Tabelle an.</p>':'<p class="klein">Ziehe einen Betrag in die Tabelle. Beträge in der Tabelle kannst du verschieben oder tauschen. Du kannst auch zuerst den Betrag und dann das Zielfeld antippen.</p>')+karten+
+ return situation(basis,"Angabe aus Aufgabe 1")+situation(notariat,"Angabe aus Aufgabe 2a")+loesungenAusAufgabe1()+frage(a.locked?"Bestimme die Abschreibungsgrundlage.":"Ordne die Beträge in der Tabelle zu.")+(a.locked?'<p class="klein">Tippe den passenden Betrag in der Tabelle an.</p>':'<p class="klein">Ziehe einen Betrag in die Tabelle. Beträge in der Tabelle kannst du verschieben oder tauschen. Du kannst auch zuerst den Betrag und dann das Zielfeld antippen.</p>')+karten+
  '<table class="tabelle"><thead><tr><th></th><th>Grundstück</th><th>Lagerhalle</th></tr></thead><tbody>'+["Kaufpreis","Anschaffungsnebenkosten (Notariat)","Anschaffungskosten gesamt"].map((t,i)=>'<tr><th>'+t+'</th><td>'+box(i*2)+'</td><td>'+box(i*2+1)+'</td></tr>').join("")+'</tbody></table>'+
  (a.locked?'<button data-act="unlock">Tabelle wieder bearbeiten</button>':'<button data-act="lock">Tabelle einloggen</button>');
 }
@@ -167,10 +169,10 @@ function render(preserveDetails=false){
  if(view===8){ergebnis();return;}
  let body="",reset="Eingabe aufheben";
  if(view===0)body=situation(basis)+frage("Berechne den Gesamtkaufpreis und die Kaufpreisanteile in Prozent.")+rechner+'<div class="felder">'+feld("Gesamtkaufpreis","gesamtpreis",0,a.gesamtpreis,"€")+'</div><div class="felder">'+feld("Kaufpreisanteil Grundstück","p",0,a.p[0],"%")+feld("Kaufpreisanteil Lagerhalle","p",1,a.p[1],"%")+'</div>';
- if(view===1)body=situation('<p>'+basis.replaceAll("<strong>","").replaceAll("</strong>","")+'</p><p>'+notariat+'</p>')+frage("Berechne die Anteile der Notariatsrechnung, die auf Grundstück und Lagerhalle entfallen.")+eigenerGesamtpreis()+'<p class="klein"><strong>Deine Lösung aus Aufgabe 1</strong> · Grundstück '+prozent(anteil(a.p[0]))+' · Lagerhalle '+prozent(anteil(a.p[1]))+'</p>'+rechner+'<div class="felder">'+feld("Notariatskostenanteil Grundstück","n",0,a.n[0],"€")+feld("Notariatskostenanteil Lagerhalle","n",1,a.n[1],"€")+'</div>';
- if(view===2)body=situation('NIVO erhält eine Notariatskostenrechnung über <strong>2.082,50 € brutto</strong>.',"Geschäftsfall")+frage("Bilde den Buchungssatz zur Notariatskostenrechnung.")+eigenerGesamtpreis()+zahlkarten([["Grundstück · aus 2a",euro(vorher()[0])],["Lagerhalle · aus 2a",euro(vorher()[1])],["Vorsteuer / Umsatzsteuer","332,50 €"],["Rechnungsbetrag","2.082,50 € brutto"]])+buchen();
+ if(view===1)body=situation('<p>'+basis.replaceAll("<strong>","").replaceAll("</strong>","")+'</p><p>'+notariat+'</p>')+frage("Berechne die Anteile der Notariatsrechnung, die auf Grundstück und Lagerhalle entfallen.")+loesungenAusAufgabe1(true)+rechner+'<div class="felder">'+feld("Notariatskostenanteil Grundstück","n",0,a.n[0],"€")+feld("Notariatskostenanteil Lagerhalle","n",1,a.n[1],"€")+'</div>';
+ if(view===2)body=situation('NIVO erhält eine Notariatskostenrechnung über <strong>2.082,50 € brutto</strong>.',"Geschäftsfall")+frage("Bilde den Buchungssatz zur Notariatskostenrechnung.")+loesungenAusAufgabe1()+zahlkarten([["Grundstück · aus 2a",euro(vorher()[0])],["Lagerhalle · aus 2a",euro(vorher()[1])],["Vorsteuer / Umsatzsteuer","332,50 €"],["Rechnungsbetrag","2.082,50 € brutto"]])+buchen();
  if(view===3){body=tabelle();reset="Auswahl aufheben";}
- if(view===4){body=eigenerGesamtpreis()+frage(frage4)+muendlich+oral("o4",oral4);reset="Bewertung aufheben";}
+ if(view===4){body=loesungenAusAufgabe1()+frage(frage4)+muendlich+oral("o4",oral4);reset="Bewertung aufheben";}
  if(view===5){body=frage("Entscheide, ob die Aussagen zu GWG zutreffen.")+aussagen.map((v,i)=>'<div class="ja-nein"><span>'+v+'</span><div class="theorie-antworten"><button data-act="ja" data-i="'+i+'" data-v="1" aria-pressed="'+(a.j[i]===true)+'">Ja</button><button data-act="ja" data-i="'+i+'" data-v="0" aria-pressed="'+(a.j[i]===false)+'">Nein</button></div></div>').join("");reset="Auswahl aufheben";}
  if(view===6){body=einkauf();reset="Auswahl aufheben";}
  if(view===7){body=situation('NIVO kauft einen Ersatzakku für einen vorhandenen Akku-Bohrschrauber. Er kostet <strong>69,00 € netto</strong>.')+frage("Prüfe anhand des Preises und der drei GWG-Merkmale, ob NIVO den Akku als Kleingut einordnen kann. Begründe deine Entscheidung mündlich.")+muendlich+oral("o7",oral7);reset="Bewertung aufheben";}
